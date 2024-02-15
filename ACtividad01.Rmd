@@ -1,0 +1,708 @@
+---
+title: Evaluación de la Oferta Inmobiliaria Urbana
+author: Alvaro Pérez Niño
+date: Febrero de 2024
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+    css: custom_styles.css
+---
+
+# Problema
+
+Una empresa inmobiliaria líder en una gran ciudad está buscando comprender en profundidad el mercado de viviendas urbanas para tomar decisiones estratégicas más informadas. La empresa posee una base de datos extensa que contiene información detallada sobre diversas propiedades residenciales disponibles en el mercado. Se requiere realizar un análisis holístico de estos datos para identificar patrones, relaciones y segmentaciones relevantes que permitan mejorar la toma de decisiones en cuanto a la compra, venta y valoración de propiedades.
+
+```{r D00, echo=TRUE}
+library(paqueteMODELOS)
+dataset_vivienda <- vivienda
+str(dataset_vivienda)
+```
+
+## Retos
+
+El reto principal consisten en realizar un análisis integral y multidimensional de la base de datos para obtener una comprensión del mercado inmobiliario urbano. Se requiere aplicar diversas técnicas de análisis de datos, incluyendo:
+
+1. Análisis de Componentes Principales
+2. Análisis de Conglomerados
+3. Análisis de Correspondencia
+4. Visualización de resultados
+
+# Solución
+
+## 0. Cargue de librerias requeridas
+
+```{r D01, echo=TRUE}
+# Gestionar las bibliotecas necesarias
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(mice)
+library(tidyverse)
+library(corrplot)
+library(psych)
+library(factoextra)
+library(GGally)
+library(knitr)
+library(cluster)
+library(FactoMineR)
+library(factoextra)
+```
+
+## 1. Entendimiento de los datos
+
+**1.1 Número de registros y atributos**
+
+```{r D02, echo=TRUE}
+# Obtener el número de filas
+num_filas <- nrow(dataset_vivienda)
+# Obtener el número de columnas
+num_columnas <- ncol(dataset_vivienda)
+# Mostrar en pantalla resultado
+cat("Registros: ",num_filas," y Atributos: ",num_columnas)
+```
+
+**1.2 Obtener los tipos de datos de los atribitos**
+
+```{r D03, echo=TRUE}
+# Obtener los tipos de datos de los atribitos
+tipos_datos <- sapply(dataset_vivienda, typeof)
+print(tipos_datos)
+```
+
+**1.3 Cantidad de datos faltantes por atribito**
+
+```{r D05, echo=TRUE}
+# Calcular la suma de valores faltantes por columna
+suma_valores_faltantes <- colSums(is.na(dataset_vivienda))
+
+# Mostrar el resultado
+print(suma_valores_faltantes)
+```
+
+**1.4 Descripción estadística General**
+
+```{r D04, echo=TRUE}
+# Descripción estadística
+summary(dataset_vivienda)
+```
+
+**1.4.1 Gráfico de las Variables Cuantitativas**
+
+```{r D06, echo=FALSE}
+# Gráfico de número de pisos
+ggplot(dataset_vivienda, aes(x = factor(piso))) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.1, size = 3.5) +
+  labs(x = "Pisos", y = "Frecuencia", title = "Número de pisos") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+
+# Gráfico de estratos
+ggplot(dataset_vivienda, aes(x = factor(estrato))) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.1, size = 3.5) +
+  labs(x = "Estratos", y = "Frecuencia", title = "Estratos socioeconomicos") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+# Gráfico de número de parqueaderos
+ggplot(dataset_vivienda, aes(x = factor(parqueaderos))) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.1, size = 3.5) +
+  labs(x = "Parqueadero", y = "Frecuencia", title = "Número de parqueaderos") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+# Gráfico de número de baños
+ggplot(dataset_vivienda, aes(x = factor(banios))) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, size = 3.5) +
+  labs(x = "Baños", y = "Frecuencia", title = "Número de baños") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+# Gráfico de número de habitaciones
+ggplot(dataset_vivienda, aes(x = factor(habitaciones))) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, size = 3.5) +
+  labs(x = "Habitaciones", y = "Frecuencia", title = "Número de habitaciones") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+# Gráfico de precios por rango
+dataset_vivienda$rango_precio <- cut(dataset_vivienda$preciom, breaks = 
+  c(-Inf, 100, 300, 600, 900, 1200, 1500, 1800, Inf),labels = c("<100", "100-300", 
+  "300-600", "600-900", "900-1200", "1200-1500", "1500-1800", ">1800"))
+ggplot(dataset_vivienda, aes(x = rango_precio)) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, size = 3.5) +
+  labs(x = "Precios", y = "Frecuencia", title = "Precios por rangos") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+# Gráfico de area construida
+dataset_vivienda$rango_area <- cut(dataset_vivienda$areaconst, breaks = 
+  c(-Inf, 100, 300, 600, 900, 1200, 1500, 1800,Inf), labels = c("<100", "100-300", 
+  "300-600", "600-900", "900-1200", "1200-1500", "1500-1800", ">1800"))
+ggplot(dataset_vivienda, aes(x = rango_area)) + geom_bar(fill = "#1E6BB8") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5, size = 3.5) +
+  labs(x = "Area construida", y = "Frecuencia", title = "Area construida") +
+  theme(panel.background = element_rect(fill = "#F2F3F4"))
+```
+
+**1.4.2 Gráfico de las Variables Cualitativas**
+
+```{r D07, echo=FALSE}
+# Gráfico de Ubicación por Zonas
+ggplot(dataset_vivienda, aes(x = zona, fill = zona)) + geom_bar(fill = "#1E6BB8") +
+      geom_text(stat = 'count', aes(label = after_stat(count)), vjust = -0.5, size = 3.5) +
+      labs(x = "Zonas", y = "Frecuencia", title = "Ubicación por zonas") +
+      theme(panel.background = element_rect(fill = "#F2F3F4"))
+
+# Gráfico de Tipo de vivienda
+ggplot(dataset_vivienda, aes(x = tipo, fill = tipo)) + geom_bar(fill = "#1E6BB8") +
+      geom_text(stat = 'count', aes(label = after_stat(count)), vjust = -0.5, size = 3.5) +
+      labs(x = "Tipo", y = "Frecuencia", title = "Tipos de Viviendas") +
+      theme(panel.background = element_rect(fill = "#F2F3F4"))
+```
+
+**1.5 Análisis del dataset**
+
+La base de datos de la empresa inmobiliaria contiene un total de 8,322 registros 
+y 13 atributos. De estos, 3 atributos son categóricos (zona, tipo y barrio), 
+mientras que 10 atributos son numéricos (piso, estrato, precio, área construida, 
+parqueadero, baño, habitaciones, longitud y latitud). Es importante destacar que 
+el conjunto de datos presenta pérdida de información, principalmente en los 
+atributos de piso (2638 registros) y parqueadero (1605 registros).
+
+Debido a las inconsistencias mencionadas, se procede a normalizar el conjunto de 
+datos antes de aplicar diversas técnicas de análisis.
+
+
+## 2. Preparación de los datos
+
+**2.1 Eliminar el ID como dato irrelevante del dataset**
+
+```{r D08, echo=TRUE}
+#  Eliminar el ID como dato irrelevante del dataset
+dataset_vivienda=select(dataset_vivienda, -id)
+```
+
+**2.2 Convertir el tipo de dato en el atributo "Piso" de Caracteres a Numérico**
+
+```{r D10, echo=TRUE}
+# Convertir el tipo de dato en el atributo "Piso"
+dataset_vivienda$piso <- as.numeric(dataset_vivienda$piso)
+```
+
+**2.3 Imputación de registros para completar los datos faltantes**
+
+```{r D11, echo=TRUE}
+# Número de pisos
+media_piso <- mean(dataset_vivienda$piso[dataset_vivienda$piso != 0 & 
+  !is.na(dataset_vivienda$piso)], na.rm = TRUE)
+media_piso <- round(media_piso)
+dataset_vivienda <- dataset_vivienda %>% mutate(piso = ifelse(piso == 0 | 
+  is.na(piso), media_piso, piso))
+
+# Estrato socioeconomico
+media_estrato <- mean(dataset_vivienda$estrato[dataset_vivienda$estrato != 0 & 
+  !is.na(dataset_vivienda$estrato)], na.rm = TRUE)
+media_estrato <- round(media_estrato)
+dataset_vivienda <- dataset_vivienda %>% mutate(estrato = ifelse(estrato == 0 | 
+  is.na(estrato), media_estrato, estrato))
+
+# Número de parqueaderos
+media_parquea <- mean(dataset_vivienda$parqueaderos[dataset_vivienda$parqueaderos != 0 
+  & !is.na(dataset_vivienda$parqueaderos)], na.rm = TRUE)
+media_parquea <- round(media_parquea)
+dataset_vivienda <- dataset_vivienda %>% mutate(parqueaderos = ifelse(parqueaderos == 0 | 
+  is.na(parqueaderos), media_parquea, parqueaderos))
+
+# Número de baños
+media_banios <- mean(dataset_vivienda$banios[dataset_vivienda$banios != 0 & 
+  !is.na(dataset_vivienda$banios)], na.rm = TRUE)
+media_banios <- round(media_banios)
+dataset_vivienda <- dataset_vivienda %>% mutate(banios = ifelse(banios == 0 | 
+  is.na(banios), media_banios, banios))
+
+# Número de habitaciones
+media_habitac <- mean(dataset_vivienda$habitaciones[dataset_vivienda$habitaciones != 0 &
+  !is.na(dataset_vivienda$habitaciones)], na.rm = TRUE)
+media_habitac <- round(media_habitac)
+dataset_vivienda <- dataset_vivienda %>% mutate(habitaciones = ifelse(habitaciones == 0 | 
+  is.na(habitaciones), media_habitac, habitaciones))
+```
+
+**2.4 Eliminar los registros totalmente incompletos**
+
+```{r D09, echo=TRUE}
+# Eliminar los registros incompletos
+dataset_vivienda <- dataset_vivienda[complete.cases(dataset_vivienda), ]
+```
+
+**2.5 Verificación de la normalización del dataset**
+
+```{r D12, echo=TRUE}
+# Verificar los datos faltantes
+md.pattern(dataset_vivienda, rotate.names = TRUE)
+```
+
+**2.6 Transformar los atributos categóricos en numéricos**
+
+```{r D13, echo=TRUE}
+# Transformación de atributos
+# Ubicacion por Zona
+dataset_vivienda$zona_numerica <- as.numeric(factor(dataset_vivienda$zona, 
+  levels = c("Zona Centro", "Zona Norte", "Zona Oeste", "Zona Oriente", "Zona Sur")))
+
+# Tipo de inmueble
+dataset_vivienda$tipo_numerica <- as.numeric(factor(dataset_vivienda$tipo, 
+  levels = c("Apartamento", "Casa")))
+```
+
+## 3. Análisis de datos
+
+### 3.1 Análisis de Componentes Principales
+
+Para el análisis de componentes principales PCA, no se tendran encuenta los atributos
+complementarios (barrio, longitud y latitud), debido a que son unicamente utilizadas 
+para una visualización espacial y al igual de los atributos generados para el análisis
+estadístico.
+
+**3.1.1 Adecuación preliminar del dataset**
+
+```{r D14, echo=TRUE}
+# Adecuación preliminar
+dataset_PCA=select(dataset_vivienda, -zona, -tipo, -barrio, -longitud, -latitud,
+                   -rango_precio,	-rango_area)
+```
+
+**3.1.2 Correlación de los atributos del dataset**
+
+```{r D15, echo=TRUE}
+# Correlación de los atributos del dataset
+matrizcor <- cor(dataset_PCA)
+corrplot (matrizcor, method = "number", number.cex = 0.5, addCoef.col = "#034D94")
+```
+
+El análisis de correlaciones evidencia una fuerte relacion entre los atributos:
+precio, áera construida, parqueaderos y baños; donde se puede inferir que el
+**precio** de la vivienda es directamente proporcional al  áera construida, parqueaderos y baños.
+
+Con el fin de determinar la pertinencia del PCA para el dataset se realiza la
+medición de KMO y prueba de Barlett:
+
+```{r D16, echo=TRUE}
+# Medición de KMO y prueba de Barlett
+resultado_prueba <- psych::corr.test(matrizcor)
+print(resultado_prueba)
+cortest.bartlett(cor(dataset_PCA),n=850)
+KMO(dataset_PCA)
+```
+
+**NOTA:** El indice de KMO se encuentra por encima de 0.65 y el resultado del test de Barllet es mayor a 60. Por lo cual se considera pertinencia para realizar 
+análisis de componentes principales PCA.
+
+**3.1.3 Estandarización de los atributos**
+
+Con el fin de evitar que las variables que tiene una escala con valores más grandes 
+afecten las estimaciones realizadas (sesgos) se realiza la estandarización de las 
+variables antes de proceder a realizar el proceso de estimación de los componentes 
+principales.
+
+```{r D17, echo=TRUE}
+# Estandarización de los atributos
+dataset_PCA_scale <- scale(dataset_PCA)
+head (dataset_PCA_scale)
+```
+
+**3.1.3 Elección del número de componentes principales**
+
+```{r D18, echo=TRUE}
+# Elección del número de componentes principales
+dataset_vivienda_PCA_scale <- (prcomp(dataset_PCA_scale))
+fviz_eig(dataset_vivienda_PCA_scale, addlabels = TRUE, ylim = c(0, 80),
+         main="Porcentaje de varianza por dimensión")
+```
+
+**NOTA:** El primer componente retiene la mayor parte de la varianza en los datos 
+(41.2%), seguido del segundo componente con un (18.7%), el tercer componente con 
+un (11.6%), y el cuarto componente con un (9.4%). En conjunto, estos cuatro primeros 
+componentes abarcan el (81%) de la variabilidad total de los datos. Basándonos en 
+esta información, se opta por seleccionar los primeros 7 componentes de los 9 
+disponibles, lo que proporciona una explicación del 95% de la variabilidad en 
+los datos:
+
+```{r D19, echo=TRUE}
+# Elección del número de componentes principales
+get_eigenvalue(dataset_vivienda_PCA_scale)
+```
+
+**3.1.4 Contribución de los Atributos del dataset y Componentes Principales**
+
+En la siguiente tabla se observa la contribución de cada atributo en cada uno 
+de los componentes seleccionados:
+
+```{r D20, echo=TRUE}
+# Selección de componentes principales
+get_pca_var(dataset_vivienda_PCA_scale)$contrib[,1:7]
+```
+
+**3.1.5 Gráfica de los Componentes Principales - General**
+
+```{r D21, echo=TRUE}
+# Gráfica de los Componentes Principales
+grafico_pca <- fviz_pca_var(dataset_vivienda_PCA_scale, col.var = "contrib", 
+                        gradient.cols = c("#158E61", "#034D94"), repel = TRUE) +
+  theme_gray(base_size = 15, base_family = "") +
+  theme(panel.background = element_rect(fill = "#F7F7F7"),
+        plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Gráfica de los Componentes Principales - General")
+print(grafico_pca)
+```
+
+**3.1.6 Gráfica de los Componentes Principales - Individual**
+
+```{r D22, echo=TRUE}
+# Gráfica de los Componentes Principales - Individual
+grafico_pca_ind <- fviz_pca_biplot(dataset_vivienda_PCA_scale, repel=FALSE, col.var='#063C6F', 
+                                   col.ind='#158E61')  +
+  theme_gray(base_size = 15, base_family = "") +
+  theme(panel.background = element_rect(fill = "#F7F7F7"),
+        plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Gráfica de los Componentes Principales - Individual")
+print(grafico_pca_ind)
+```
+
+**3.1.6 Análisis de los Componentes Principales**
+
+Después de llevar a cabo un análisis de los componentes principales (PCA) en la base de datos del sector inmobiliario, se han identificado patrones significativos que ofrecen una mejor comprensión de la estructura de los datos. Se ha observado que las variables relacionadas con características específicas de las propiedades, como el número de pisos, estrato, precio, área de construcción, cantidad de parqueaderos, número de baños y habitaciones, se distribuyen en varios factores o instancias.
+
+En primer lugar, se destaca que los factores más determinantes en la oferta inmobiliaria se presentan de la siguiente manera: las propiedades con precios más altos suelen tener un área de construcción más amplia, con un mayor número de baños y parqueaderos. En segundo lugar, se encuentran el estrato, el tipo de propiedad, el número de pisos y el número de habitaciones como factores influyentes en el proceso de compra-venta de inmuebles.
+
+Estos factores permiten comprender las preferencias y características más relevantes para los clientes, lo cual proporciona una base sólida para asesorar a los clientes y tomar decisiones estratégicas en el sector frente a los competidores.
+
+### 3.2 Análisis de Conglomerados
+
+**3.2.1 Adecuación del dataset para el análisis de conglomerados**
+
+```{r D23, echo=TRUE}
+# Selección de variables
+dataset_Cong=select(dataset_vivienda, -zona, -tipo, -barrio, -longitud, -latitud,
+                   -rango_precio,	-rango_area)
+
+# Escalar las variables
+dataset_Cong_scale <- scale(dataset_Cong)
+head (dataset_Cong_scale)
+```
+
+**3.2.2 Calcular las distancias Euclidianas**
+
+```{r D24, echo=TRUE}
+# Paso 3: Distancias euclidianas
+dis_euc <- dist(dataset_Cong_scale, method = "euclidean")
+head(dis_euc, 5)
+```
+
+**3.2.3 Calcular el agrupamiento para diferentes números de clústeres**
+
+```{r D25, echo=TRUE}
+# Calcular el agrupamiento para diferentes números de clústeres
+set.seed(123)
+kmeans_results <- lapply(1:10, function(k) kmeans(dataset_Cong_scale, centers = k))
+# Calcular la inercia para cada número de clústeres
+inertia <- sapply(kmeans_results, function(x) x$tot.withinss)
+# Graficar la curva del codo
+plot(1:10, inertia, type = "b", pch = 19, frame = FALSE, 
+     xlab = "Número de Clústeres",
+     ylab = "Inercia",
+     main = "Método del Codo", col = "#034D94")
+```
+
+**NOTA:** Para este ejercicio, se determinó que el número apropiado de clústeres es 4.
+
+**3.2.4 Aplicar el método de agrupamiento**
+
+**NOTA:** Como método de agrupamiento se seleccionó el de **kmeans**
+
+```{r D26, echo=TRUE}
+# Aplicación del método de agrupamiento
+num_clusters <- 4  
+resultado_kmeans <- kmeans(dataset_Cong_scale, centers = num_clusters)
+
+# Asignación del Cluser a cada registro del dataset scalado
+dataset_Cong_scale$cluster <- resultado_kmeans$cluster
+```
+
+**3.2.5 Interpretación de resultados**
+
+```{r D27, echo=TRUE}
+# Crear tabla de frecuencias por clúster
+tabla_frecuencia <- table(dataset_Cong_scale$cluster)
+col_nombres <- c("Cluster", "Frecuencia")
+kable(tabla_frecuencia, format = "markdown", col.names = col_nombres)
+```
+
+**3.2.6 Visualización de los resultados**
+
+```{r D28, echo=TRUE}
+dataset_vivienda$cluster <- resultado_kmeans$cluster
+
+fviz_cluster(
+  list(
+    data = select(dataset_vivienda, -zona, -tipo, -barrio, -longitud, -latitud,
+                   -rango_precio,	-rango_area), cluster = dataset_vivienda$cluster
+  ),
+  palette = c("#158E61",  "#034D94", "#E5D352", "#A23E48", "#E06D06"),
+  ellipse.type = "convex",
+  repel = FALSE,  # repel is a logical value, no need for quotes around FALSE
+  show.clust.cent = TRUE,
+  ggtheme = theme_minimal()
+) + ggtitle("Visualización de clustering inmobiliario")
+
+```
+
+**3.2.7 Dendograma**
+
+```{r D29, echo=TRUE}
+# Dendograma
+hierarchical_clustering <- hclust(dis_euc, method = "complete")
+# Graficar dendograma
+plot(hierarchical_clustering, cex = 0.6, main = "Dendrograma de Viviendas", las = 2,
+     ylab = "Distancia euclidiana", xlab = "Viviendas", ylim = c(0, 50))
+# Agregar rectángulos para los clústeres
+rect.hclust(hierarchical_clustering, k = num_clusters, border = 2:5)
+```
+
+**NOTA:** Con el fin de analizar cada cluster por separado, se calculan medidas de 
+tendencia central para las variables contenidas en cada cluster generado:
+
+```{r D30, echo=TRUE}
+# Análisis de clusters
+median_clus <- aggregate(cbind(piso, estrato, preciom, areaconst, parqueaderos, 
+                               banios, habitaciones, zona_numerica, tipo_numerica)
+                         ~ cluster ,data = dataset_vivienda, 
+                         FUN = function(x) c(Media = round(mean(x), 0)))
+col_nombres <- c("Cluster", "Piso", "Estrato", "Precio", "Área construida", "Parqueaderos",
+                 "Baños", "Habitaciones", "Zona", "Tipo")
+kable(median_clus, format = "markdown", col.names = col_nombres)
+```
+
+**3.2.8 Clusters por Precio de la vivienda vs Área construida**
+
+```{r D31, echo=TRUE}
+# Clusters por Precio de la vivienda vs Área construida
+variable1 <- dataset_vivienda$preciom
+variable2 <- dataset_vivienda$areaconst
+
+ggplot(data = dataset_vivienda, aes(x = variable1, y = variable2, 
+                                    color = as.factor(cluster))) + geom_point() +
+  labs(x = "Precio", y = "Área construida", color = "Clúster") +
+  ggtitle("Clusters por Precio de la vivienda vs Área construida") +
+  theme_minimal()
+
+```
+
+**3.2.9 Clusters por Zona vs Tipo de vivienda**
+
+```{r D32, echo=TRUE}
+# Clusters por Zona vs Tipo de vivienda
+variable1 <- dataset_vivienda$zona
+variable2 <- dataset_vivienda$tipo
+
+ggplot(data = dataset_vivienda, aes(x = variable2, y = variable1, color = as.factor(cluster))) + 
+  geom_point() +
+  labs(x = "Tipo", y = "Zona", color = "Clúster") +
+  ggtitle("Clusters por Zona vs Tipo de vivienda") +
+  theme_minimal() +
+  facet_wrap(~ cluster, ncol = 2)
+
+```
+
+**3.2.10 Clusters por Número de piso vs Estrato**
+
+```{r D33, echo=TRUE}
+#  Clusters por Número de piso vs Estrato
+variable1 <- dataset_vivienda$piso
+variable2 <- dataset_vivienda$estrato
+
+ggplot(data = dataset_vivienda, aes(x = variable1, y = variable2, color = as.factor(cluster))) + 
+  geom_point() +
+  labs(x = "Piso", y = "Estrato", color = "Clúster") +
+  ggtitle(" Clusters por Número de piso vs Estrato") +
+  theme_minimal() +
+  facet_wrap(~ cluster, ncol = 2)
+
+```
+
+**3.2.11 Análisis de Conglomerados**
+
+El análisis de conglomerados para el análisis ded la oferta inmobiliaria ha proporcionado
+una visión detallada de la diversidad de propiedades, dividiéndolas en cuatro clusters
+distintos. En el **primer cluster**, se encuentran casas de alto precio y amplias áreas,
+preferiblemente en pisos bajos, mientras que el **segundo cluster** muestra propiedades
+también de alto precio, pero con áreas más reducidas, inclinándose hacia apartamentos
+en pisos altos. Por otro lado, el **tercer cluster** presenta propiedades de precio
+más asequible y áreas más pequeñas, sin una preferencia clara por los pisos. Similar
+al primero, el **cuarto** cluster refleja casas de alto precio y amplias áreas, 
+nuevamente favoreciendo los pisos bajos. Además, al comparar el primer cluster con
+el cuarto cluster, se evidencian diferencias notables en términos de la cantidad
+de parqueaderos, baños y estrato de las propiedades. Mientras que el **primer cluster**
+refleja propiedades lujosas con varios parqueaderos y baños, ubicadas en estratos
+altos, el **cuarto cluster** presenta propiedades con menos comodidades, con un
+número reducido de parqueaderos y baños, y ubicadas en estratos bajos. Estas 
+discrepancias resaltan las distintas preferencias y perfiles de los compradores 
+en cada segmento, donde el primer cluster podría atraer a quienes valoran el lujo
+y la comodidad, mientras que el cuarto cluster sería más atractivo para aquellos
+que buscan precios más accesibles.
+
+### 3.3 Análisis de Correspondencia
+
+**3.3.1 Análisis de Correspondencia de zona y estrato**
+
+Tabla de frecuencia para los atributos zona y estrato.
+
+```{r D34, echo=TRUE}
+# Tabla de frecuencia para los atributos zona y estrato.
+tabla_frecuencia <- table(dataset_vivienda$zona, dataset_vivienda$estrato)
+col_nombres <- c("Zona", "Est 03",	"Est 04",	"Est 05", "Est 06")
+kable(tabla_frecuencia, format = "markdown", col.names = col_nombres)
+```
+
+Se aplica prueba de asociacion chi cuadrado para determinar la relacion entre las 
+variables zona y estrato:
+
+```{r D35, echo=TRUE}
+# Prueba de asociacion chi cuadrado
+chisq.test(tabla_frecuencia)
+```
+
+Se evidencia que ambas variables zona y estrato se encuentran relacionadas acorde
+con p valor obtenido, por lo tanto se rechaza hipotesis nula que determina que son 
+independientes la una de la otra. El nivel de significancia establecido es 0.05.
+
+Se estiman las coordenadas para cada una de los niveles de las variables para ser 
+representadas en un plano cartesiano
+
+```{r D36, echo=TRUE}
+# Graficación 
+resultados_ac <- CA(tabla_frecuencia)
+```
+
+Para medir el grado de representatividad del proceso calculas los valores de la 
+varianza acumulada, utilizando para ellos los valores propios de la matriz de 
+discrepancias
+
+```{r D37, echo=TRUE}
+valores_prop <-resultados_ac$eig ; valores_prop
+```
+
+```{r D38, echo=TRUE}
+fviz_screeplot(resultados_ac, addlabels = TRUE, ylim = c(0, 80))+ggtitle("")+
+ylab("Porcentaje de varianza explicado") + xlab("Componentes")
+```
+
+Los resultados indican que el primer componente contiene el 70% de la varianza 
+de los datos y el segundo componente el 27.7%, es decir que entre ambos se aporta 
+el 97.7% de los datos.
+
+**3.3.2 Análisis de Correspondencia de Piso y Estrato**
+
+Tabla de frecuencia para los atributos Piso y Estrato.
+
+```{r D39, echo=TRUE}
+# Tabla de frecuencia para los atributos Piso y Estrato.
+tabla_frecuencia1 <- table(dataset_vivienda$estrato, dataset_vivienda$piso)
+col_nombres1 <- c("Estratos", "P01",	"P02",	"P03", "P04", "P05", "P06", "P07", 
+                 "P08", "P09", "P10", "P11", "P12")
+kable(tabla_frecuencia1, format = "markdown", col.names = col_nombres1)
+```
+
+Se aplica prueba de asociacion chi cuadrado para determinar la relacion entre las 
+variables piso y estrato:
+
+```{r D40, echo=TRUE}
+# Prueba de asociacion chi cuadrado
+chisq.test(tabla_frecuencia1)
+```
+
+Se evidencia que ambas variables zona y estrato se encuentran relacionadas acorde
+con p valor obtenido, por lo tanto se rechaza hipotesis nula que determina que son 
+independientes la una de la otra. El nivel de significancia establecido es 0.05.
+
+Se estiman las coordenadas para cada una de los niveles de las variables para ser 
+representadas en un plano cartesiano
+
+```{r D41, echo=TRUE}
+# Graficación 
+resultados_ac1 <- CA(tabla_frecuencia1)
+```
+
+Para medir el grado de representatividad del proceso calculas los valores de la 
+varianza acumulada, utilizando para ellos los valores propios de la matriz de 
+discrepancias
+
+```{r D42, echo=TRUE}
+valores_prop1 <-resultados_ac1$eig ; valores_prop
+```
+
+```{r D43, echo=TRUE}
+fviz_screeplot(resultados_ac1, addlabels = TRUE, ylim = c(0, 80))+ggtitle("")+
+ylab("Porcentaje de varianza explicado") + xlab("Componentes")
+```
+
+Los resultados indican que el primer componente contiene el 83,5% de la varianza 
+de los datos y el segundo componente el 12.2%, es decir que entre ambos se aporta 
+el 95.7% de los datos.
+
+**3.3.3 Análisis de Correspondencia de Precio y Área construida**
+
+Tabla de frecuencia para los atributos Precio y Área construida.
+
+```{r D44, echo=TRUE}
+# Tabla de frecuencia para los atributos Precio y Área construida
+tabla_frecuencia2 <- table(dataset_vivienda$rango_precio, dataset_vivienda$rango_area)
+col_nombres2 <- c("Precio vs Area", "<100",	"100-300",	"300-600",	"600-900",
+                  "900-1200",	"1200-1500",	"1500-1800",	">1800")
+kable(tabla_frecuencia2, format = "markdown", col.names = col_nombres2)
+```
+
+Se aplica prueba de asociacion chi cuadrado para determinar la relacion entre las 
+variables Precio y Área construida:
+
+```{r D45, echo=TRUE}
+# Prueba de asociacion chi cuadrado
+chisq.test(tabla_frecuencia2)
+```
+
+Se evidencia que ambas variables zona y estrato se encuentran relacionadas acorde
+con p valor obtenido, por lo tanto se rechaza hipotesis nula que determina que son 
+independientes la una de la otra. El nivel de significancia establecido es 0.05.
+
+Se estiman las coordenadas para cada una de los niveles de las variables para ser 
+representadas en un plano cartesiano
+
+```{r D46, echo=TRUE}
+# Graficación 
+resultados_ac2 <- CA(tabla_frecuencia2)
+```
+
+Para medir el grado de representatividad del proceso calculas los valores de la 
+varianza acumulada, utilizando para ellos los valores propios de la matriz de 
+discrepancias
+
+```{r D47, echo=TRUE}
+valores_prop2 <-resultados_ac2$eig ; valores_prop
+```
+
+```{r D48, echo=TRUE}
+fviz_screeplot(resultados_ac2, addlabels = TRUE, ylim = c(0, 80))+ggtitle("")+
+ylab("Porcentaje de varianza explicado") + xlab("Componentes")
+```
+
+Los resultados indican que el primer componente contiene el 75,5% de la varianza 
+de los datos y el segundo componente el 22%, es decir que entre ambos se aporta 
+el 97.5% de los datos.
+
+## 4. Análisis Final
+
+En conclusión, el análisis exhaustivo realizado sobre la base de datos de la empresa inmobiliaria ha proporcionado valiosas perspectivas que pueden informar estrategias comerciales y decisiones estratégicas en el sector. La base de datos, compuesta por 8,322 registros y 13 atributos, revela una combinación de variables numéricas y categóricas que influyen en la dinámica del mercado. Sin embargo, se observa una pérdida de información en algunos atributos, como el piso y el parqueadero, lo que sugiere la necesidad de abordar las inconsistencias antes de realizar análisis más detallados.
+
+El análisis de componentes principales (PCA) ha identificado patrones significativos en la estructura de los datos, destacando la relación entre el precio, el área de construcción, los baños, los parqueaderos y otras características específicas de las propiedades. Estos factores proporcionan una comprensión más profunda de las preferencias y necesidades de los clientes, lo que puede guiar la formulación de estrategias de marketing y ventas más efectivas.
+
+El análisis de conglomerados ha segmentado las propiedades en cuatro clusters distintos, cada uno con características únicas en términos de precio, tamaño y ubicación. Estos clusters revelan la diversidad del mercado inmobiliario y las diferentes preferencias de los compradores, lo que subraya la importancia de adaptar las estrategias de comercialización a cada segmento.
+
+Finalmente, el análisis de correspondencia ha proporcionado una visión detallada de la relación entre variables categóricas, como la zona y el estrato, lo que puede ayudar a identificar patrones geográficos y demográficos en el mercado.
+
+Por lo anterior, estos análisis ofrecen una base sólida para comprender y aprovechar las oportunidades en el sector inmobiliario, permitiendo a la empresa tomar decisiones informadas y satisfacer las necesidades cambiantes de los clientes en un mercado competitivo.
